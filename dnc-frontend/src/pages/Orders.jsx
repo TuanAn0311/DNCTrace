@@ -1,11 +1,15 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import Pagination from "../components/Pagination";
 import api from "../services/api";
+
+const ORDERS_PER_PAGE = 5;
 
 const Orders = () => {
   const navigate = useNavigate();
   const [orders, setOrders] = useState([]);
   const [selectedOrderDetails, setSelectedOrderDetails] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
 
   // States cho Popup Đánh giá
   const [showReviewModal, setShowReviewModal] = useState(false);
@@ -27,6 +31,16 @@ const Orders = () => {
   useEffect(() => {
     fetchOrders();
   }, [fetchOrders]);
+
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(orders.length / ORDERS_PER_PAGE));
+    if (currentPage > totalPages) setCurrentPage(totalPages);
+  }, [currentPage, orders.length]);
+
+  const paginatedOrders = useMemo(() => {
+    const startIndex = (currentPage - 1) * ORDERS_PER_PAGE;
+    return orders.slice(startIndex, startIndex + ORDERS_PER_PAGE);
+  }, [currentPage, orders]);
 
   const viewDetails = async (orderId) => {
     if (selectedOrderDetails?.orderId === orderId) {
@@ -114,7 +128,7 @@ const Orders = () => {
         <p style={{ color: "#888" }}>Bạn chưa có đơn hàng nào.</p>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "15px", marginTop: "20px" }}>
-          {orders.map((order) => (
+          {paginatedOrders.map((order) => (
             <div key={order.id} style={{ border: "1px solid #ddd", borderRadius: "8px", overflow: "hidden", background: "#fff" }}>
               <div
                 style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "20px", background: "#f8f9fa", cursor: "pointer" }}
@@ -179,6 +193,12 @@ const Orders = () => {
               )}
             </div>
           ))}
+          <Pagination
+            currentPage={currentPage}
+            totalItems={orders.length}
+            pageSize={ORDERS_PER_PAGE}
+            onPageChange={setCurrentPage}
+          />
         </div>
       )}
 

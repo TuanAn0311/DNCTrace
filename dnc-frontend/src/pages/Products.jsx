@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import Pagination from '../components/Pagination';
 import { useToast } from '../components/toastContext';
 import api from '../services/api';
+
+const PRODUCTS_PER_PAGE = 8;
 
 const Products = () => {
   const navigate = useNavigate();
@@ -11,6 +14,7 @@ const Products = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [stockFilter, setStockFilter] = useState('all');
   const [sortBy, setSortBy] = useState('featured');
+  const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
     const fetchProducts = async () => {
@@ -52,6 +56,20 @@ const Products = () => {
         return Number(b.id) - Number(a.id);
       });
   }, [products, searchTerm, sortBy, stockFilter]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, stockFilter, sortBy]);
+
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(visibleProducts.length / PRODUCTS_PER_PAGE));
+    if (currentPage > totalPages) setCurrentPage(totalPages);
+  }, [currentPage, visibleProducts.length]);
+
+  const paginatedProducts = useMemo(() => {
+    const startIndex = (currentPage - 1) * PRODUCTS_PER_PAGE;
+    return visibleProducts.slice(startIndex, startIndex + PRODUCTS_PER_PAGE);
+  }, [currentPage, visibleProducts]);
 
   const addToCart = async (productId) => {
     if (!localStorage.getItem('token')) {
@@ -122,9 +140,10 @@ const Products = () => {
               Không có sản phẩm phù hợp với bộ lọc hiện tại.
             </div>
           ) : (
-            <div className="product-grid">
-              {visibleProducts.map((product) => {
-                const isSoldOut = product.stock <= 0;
+            <>
+              <div className="product-grid">
+                {paginatedProducts.map((product) => {
+                  const isSoldOut = product.stock <= 0;
 
             return (
               <article className="product-card" key={product.id}>
@@ -177,8 +196,15 @@ const Products = () => {
                 </div>
               </article>
             );
-              })}
-            </div>
+                })}
+              </div>
+              <Pagination
+                currentPage={currentPage}
+                totalItems={visibleProducts.length}
+                pageSize={PRODUCTS_PER_PAGE}
+                onPageChange={setCurrentPage}
+              />
+            </>
           )}
         </>
       )}

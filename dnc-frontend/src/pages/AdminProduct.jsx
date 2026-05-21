@@ -1,11 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useMemo, useState, useEffect } from 'react';
+import Pagination from '../components/Pagination';
 import api from '../services/api';
+
+const PRODUCTS_PER_PAGE = 10;
 
 const AdminProduct = () => {
     const [products, setProducts] = useState([]);
     const [showForm, setShowForm] = useState(false);
     const [editingId, setEditingId] = useState(null);
     const [formData, setFormData] = useState({ name: '', price: '', stock: '', image: '', description: '', origin: '' });
+    const [currentPage, setCurrentPage] = useState(1);
 
     const fetchProducts = async () => {
         const res = await api.get('/products'); // API riêng cho admin để thấy hết cả SP status=0
@@ -13,6 +17,16 @@ const AdminProduct = () => {
     };
 
     useEffect(() => { fetchProducts(); }, []);
+
+    useEffect(() => {
+        const totalPages = Math.max(1, Math.ceil(products.length / PRODUCTS_PER_PAGE));
+        if (currentPage > totalPages) setCurrentPage(totalPages);
+    }, [currentPage, products.length]);
+
+    const paginatedProducts = useMemo(() => {
+        const startIndex = (currentPage - 1) * PRODUCTS_PER_PAGE;
+        return products.slice(startIndex, startIndex + PRODUCTS_PER_PAGE);
+    }, [currentPage, products]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -76,7 +90,7 @@ const AdminProduct = () => {
                     </tr>
                 </thead>
                 <tbody>
-                    {products.map(p => (
+                    {paginatedProducts.map(p => (
                         <tr key={p.id} style={{ borderBottom: '1px solid #ddd' }}>
                             <td style={{ padding: '10px' }}>{p.id}</td>
                             <td><img src={p.image} width="50" height="50" style={{ objectFit: 'cover' }} /></td>
@@ -92,6 +106,12 @@ const AdminProduct = () => {
                     ))}
                 </tbody>
             </table>
+            <Pagination
+                currentPage={currentPage}
+                totalItems={products.length}
+                pageSize={PRODUCTS_PER_PAGE}
+                onPageChange={setCurrentPage}
+            />
         </div>
     );
 };

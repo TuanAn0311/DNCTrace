@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import Pagination from '../components/Pagination';
 import { useToast } from '../components/toastContext';
 import api from '../services/api';
 
@@ -12,6 +13,8 @@ const emptyAddress = {
   is_default: 0,
 };
 
+const ADDRESSES_PER_PAGE = 6;
+
 const Profile = () => {
   const navigate = useNavigate();
   const { showToast } = useToast();
@@ -22,6 +25,7 @@ const Profile = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isSavingAddress, setIsSavingAddress] = useState(false);
+  const [addressesPage, setAddressesPage] = useState(1);
 
   const avatarText = useMemo(() => {
     return (profile.full_name || profile.email || 'U').trim().charAt(0).toUpperCase();
@@ -56,6 +60,16 @@ const Profile = () => {
 
     fetchProfileData();
   }, [navigate, showToast]);
+
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(addresses.length / ADDRESSES_PER_PAGE));
+    if (addressesPage > totalPages) setAddressesPage(totalPages);
+  }, [addresses.length, addressesPage]);
+
+  const paginatedAddresses = useMemo(() => {
+    const startIndex = (addressesPage - 1) * ADDRESSES_PER_PAGE;
+    return addresses.slice(startIndex, startIndex + ADDRESSES_PER_PAGE);
+  }, [addresses, addressesPage]);
 
   const syncLocalUser = (user) => {
     const current = JSON.parse(localStorage.getItem('user') || '{}');
@@ -226,23 +240,31 @@ const Profile = () => {
         {addresses.length === 0 ? (
           <div className="empty-state card">Bạn chưa có địa chỉ giao hàng nào.</div>
         ) : (
-          <div className="address-grid">
-            {addresses.map((address) => (
-              <article className="address-card" key={address.id}>
-                <div className="address-card__top">
-                  <strong>{address.full_name}</strong>
-                  {Number(address.is_default) === 1 && <span>Mặc định</span>}
-                </div>
-                <p>{address.phone}</p>
-                <p>{address.address_line}, {address.district}, {address.city}</p>
-                <div className="address-card__actions">
-                  {Number(address.is_default) !== 1 && <button className="btn btn-secondary" type="button" onClick={() => handleSetDefault(address.id)}>Đặt mặc định</button>}
-                  <button className="btn btn-secondary" type="button" onClick={() => startEditAddress(address)}>Sửa</button>
-                  <button className="btn btn-danger" type="button" onClick={() => handleDeleteAddress(address.id)}>Xóa</button>
-                </div>
-              </article>
-            ))}
-          </div>
+          <>
+            <div className="address-grid">
+              {paginatedAddresses.map((address) => (
+                <article className="address-card" key={address.id}>
+                  <div className="address-card__top">
+                    <strong>{address.full_name}</strong>
+                    {Number(address.is_default) === 1 && <span>Mặc định</span>}
+                  </div>
+                  <p>{address.phone}</p>
+                  <p>{address.address_line}, {address.district}, {address.city}</p>
+                  <div className="address-card__actions">
+                    {Number(address.is_default) !== 1 && <button className="btn btn-secondary" type="button" onClick={() => handleSetDefault(address.id)}>Đặt mặc định</button>}
+                    <button className="btn btn-secondary" type="button" onClick={() => startEditAddress(address)}>Sửa</button>
+                    <button className="btn btn-danger" type="button" onClick={() => handleDeleteAddress(address.id)}>Xóa</button>
+                  </div>
+                </article>
+              ))}
+            </div>
+            <Pagination
+              currentPage={addressesPage}
+              totalItems={addresses.length}
+              pageSize={ADDRESSES_PER_PAGE}
+              onPageChange={setAddressesPage}
+            />
+          </>
         )}
       </div>
     </section>

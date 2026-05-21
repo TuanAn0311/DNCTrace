@@ -18,6 +18,25 @@ const AdminOrders = lazy(() => import('./pages/AdminOrders'));
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
 const Profile = lazy(() => import('./pages/Profile'));
 
+const getStoredUser = () => {
+  try {
+    return JSON.parse(localStorage.getItem('user') || 'null');
+  } catch {
+    return null;
+  }
+};
+
+const RequireAuth = ({ children }) => {
+  const token = localStorage.getItem('token');
+  return token ? children : <Navigate to="/login" replace />;
+};
+
+const RequireAdmin = ({ children }) => {
+  const token = localStorage.getItem('token');
+  const user = getStoredUser();
+  return token && user?.role === 'admin' ? children : <Navigate to="/products" replace />;
+};
+
 function App() {
   return (
     <Router>
@@ -30,15 +49,15 @@ function App() {
               <Route path="/login" element={<Login />} />
               <Route path="/products" element={<Products />} />
               <Route path="/product/:id" element={<ProductDetail />} />
-              <Route path="/admin" element={<Admin />} />
-              <Route path="/admin/products" element={<AdminProducts />} />
-              <Route path="/cart" element={<Cart />} />
-              <Route path="/orders" element={<Orders />} />
-              <Route path="/checkout" element={<Checkout />} />
+              <Route path="/admin" element={<RequireAdmin><Admin /></RequireAdmin>} />
+              <Route path="/admin/products" element={<RequireAdmin><AdminProducts /></RequireAdmin>} />
+              <Route path="/cart" element={<RequireAuth><Cart /></RequireAuth>} />
+              <Route path="/orders" element={<RequireAuth><Orders /></RequireAuth>} />
+              <Route path="/checkout" element={<RequireAuth><Checkout /></RequireAuth>} />
               <Route path="/register" element={<Register />} />
-              <Route path="/profile" element={<Profile />} />
-              <Route path="/admin/orders" element={<AdminOrders />} />
-              <Route path="/admin/dashboard" element={<AdminDashboard />} />
+              <Route path="/profile" element={<RequireAuth><Profile /></RequireAuth>} />
+              <Route path="/admin/orders" element={<RequireAdmin><AdminOrders /></RequireAdmin>} />
+              <Route path="/admin/dashboard" element={<RequireAdmin><AdminDashboard /></RequireAdmin>} />
             </Routes>
           </Suspense>
         </main>

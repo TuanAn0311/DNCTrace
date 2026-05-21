@@ -1,115 +1,153 @@
 const db = require('../config/db');
-const sendEmail = require('../utils/sendEmail'); 
+const sendEmail = require('../utils/sendEmail');
 
-//======================================
-// HÀM ĐẶT HÀNG (CHECKOUT) DÀNH CHO KHÁCH HÀNG
-//======================================
 exports.placeOrder = async (req, res) => {
+    const connection = await db.getConnection();
+
     try {
         const userId = req.user.id;
-        const { address_id, payment_method } = req.body;
+        const { address_id, payment_method = 'COD' } = req.body;
 
-        // 1. Kiểm tra địa chỉ có tồn tại và thuộc về user này không
-        const [addresses] = await db.execute('SELECT * FROM user_addresses WHERE id = ? AND user_id = ?', [address_id, userId]);
-        if (addresses.length === 0) return res.status(400).json({ success: false, message: "Địa chỉ không hợp lệ!" });
-        const address = addresses[0];
-        
-        // Gộp địa chỉ thành 1 chuỗi để lưu vào bảng orders
-        const fullAddress = `${address.address_line}, ${address.district}, ${address.city}`;
-
-        // 2. Lấy giỏ hàng của user và Tự động tính lại tổng tiền
-        const [cartItems] = await db.execute(
-            'SELECT c.product_id, c.quantity, p.name, p.price FROM cart c JOIN products p ON c.product_id = p.id WHERE c.user_id = ?', 
-            [userId]
-        );
-        
-        if (cartItems.length === 0) return res.status(400).json({ success: false, message: "Giỏ hàng của bạn đang trống!" });
-        const total_price = cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-
-        // 3. Insert vào bảng `orders`
-        const [orderResult] = await db.execute(
-            'INSERT INTO orders (user_id, full_name, phone, address, total_price, payment_method, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            [userId, address.full_name, address.phone, fullAddress, total_price, payment_method, 'pending']
-        );
-        const orderId = orderResult.insertId; // Lấy ID của đơn hàng vừa tạo
-
-        // 4. Insert vào bảng `order_details` (Lưu từng sản phẩm trong đơn)
-        for (let item of cartItems) {
-            await db.execute(
-                'INSERT INTO order_details (order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)',
-                [orderId, item.product_id, item.quantity, item.price]
-            );
-            
-            // TÙY CHỌN: Trừ đi số lượng tồn kho trong bảng products
-            await db.execute('UPDATE products SET stock = stock - ? WHERE id = ?', [item.quantity, item.product_id]);
+        if (!address_id) {
+            return res.status(400).json({ success: false, message: 'Vui long chon dia chi giao hang!' });
         }
 
-        // 5. Dọn sạch giỏ hàng của user này
-        await db.execute('DELETE FROM cart WHERE user_id = ?', [userId]);
-        
-        // 6. Gửi Email xác nhận đơn hàng (Dùng email của user đã đăng ký)
-        const [users] = await db.execute('SELECT email FROM users WHERE id = ?', [userId]);
-        const userEmail = users[0].email;
+        if (!['COD', 'QR'].includes(payment_method)) {
+            return res.status(400).json({ success: false, message: 'Phuong thuc thanh toan khong hop le!' });
+        }
 
-        // Tạo nội dung HTML cho Email nhìn cho xịn
-        let itemsHtml = cartItems.map(item => `<li>${item.name} - SL: ${item.quantity} - Đơn giá: ${Number(item.price).toLocaleString()}đ</li>`).join('');
-        
+        await connection.beginTransaction();
+
+        const [addresses] = await connection.execute(
+            'SELECT * FROM user_addresses WHERE id = ? AND user_id = ?',
+            [address_id, userId],
+        );
+
+        if (addresses.length === 0) {
+            await connection.rollback();
+            return res.status(400).json({ success: false, message: 'Dia chi khong hop le!' });
+        }
+
+        const address = addresses[0];
+        const fullAddress = `${address.address_line}, ${address.district}, ${address.city}`;
+
+        const [cartItems] = await connection.execute(
+            `SELECT c.product_id, c.quantity, p.name, p.price, p.stock
+             FROM cart c
+             JOIN products p ON c.product_id = p.id
+             WHERE c.user_id = ?`,
+            [userId],
+        );
+
+        if (cartItems.length === 0) {
+            await connection.rollback();
+            return res.status(400).json({ success: false, message: 'Gio hang cua ban dang trong!' });
+        }
+
+        const outOfStockItem = cartItems.find((item) => Number(item.stock) < Number(item.quantity));
+        if (outOfStockItem) {
+            await connection.rollback();
+            return res.status(400).json({
+                success: false,
+                message: `San pham "${outOfStockItem.name}" khong du ton kho!`,
+            });
+        }
+
+        const total_price = cartItems.reduce(
+            (sum, item) => sum + Number(item.price) * Number(item.quantity),
+            0,
+        );
+
+        const [orderResult] = await connection.execute(
+            'INSERT INTO orders (user_id, full_name, phone, address, total_price, payment_method, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [userId, address.full_name, address.phone, fullAddress, total_price, payment_method, 'pending'],
+        );
+        const orderId = orderResult.insertId;
+
+        for (const item of cartItems) {
+            await connection.execute(
+                'INSERT INTO order_details (order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)',
+                [orderId, item.product_id, item.quantity, item.price],
+            );
+
+            const [stockResult] = await connection.execute(
+                'UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?',
+                [item.quantity, item.product_id, item.quantity],
+            );
+
+            if (stockResult.affectedRows === 0) {
+                throw new Error(`San pham "${item.name}" khong du ton kho!`);
+            }
+        }
+
+        await connection.execute('DELETE FROM cart WHERE user_id = ?', [userId]);
+
+        const [users] = await connection.execute('SELECT email FROM users WHERE id = ?', [userId]);
+        const userEmail = users[0]?.email;
+
+        await connection.commit();
+
+        const itemsHtml = cartItems
+            .map((item) => `<li>${item.name} - SL: ${item.quantity} - Don gia: ${Number(item.price).toLocaleString()} VND</li>`)
+            .join('');
+
         const emailContent = `
             <div style="font-family: sans-serif; padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
-                <h2 style="color: #28a745;">Cảm ơn bạn đã đặt hàng tại DNC Trace!</h2>
-                <p>Mã đơn hàng của bạn là: <strong>#${orderId}</strong></p>
-                <p>Phương thức thanh toán: <strong>${payment_method === 'QR' ? 'Chuyển khoản VietQR' : 'Thanh toán khi nhận hàng (COD)'}</strong></p>
-                <h3>Chi tiết đơn hàng:</h3>
+                <h2 style="color: #28a745;">Cam on ban da dat hang tai DNC Trace!</h2>
+                <p>Ma don hang cua ban la: <strong>#${orderId}</strong></p>
+                <p>Phuong thuc thanh toan: <strong>${payment_method === 'QR' ? 'Chuyen khoan VietQR' : 'Thanh toan khi nhan hang (COD)'}</strong></p>
+                <h3>Chi tiet don hang:</h3>
                 <ul>${itemsHtml}</ul>
-                <h3 style="color: #d9534f;">Tổng thanh toán: ${total_price.toLocaleString()} VNĐ</h3>
-                <p><strong>Địa chỉ giao hàng:</strong> ${address.full_name} - ${address.phone} <br/> ${fullAddress}</p>
+                <h3 style="color: #d9534f;">Tong thanh toan: ${total_price.toLocaleString()} VND</h3>
+                <p><strong>Dia chi giao hang:</strong> ${address.full_name} - ${address.phone} <br/> ${fullAddress}</p>
                 <hr/>
-                <p style="font-size: 12px; color: #888;">Bạn có thể theo dõi tính minh bạch của sản phẩm trên Blockchain tại website của chúng tôi.</p>
+                <p style="font-size: 12px; color: #888;">Ban co the theo doi tinh minh bach cua san pham tren Blockchain tai website cua chung toi.</p>
             </div>
         `;
 
-        // Gọi hàm gửi (Dùng .catch để dù gửi email lỗi thì vẫn báo đặt hàng thành công)
-        sendEmail(userEmail, `Xác nhận đơn hàng #${orderId} - DNC Trace`, emailContent).catch(console.error);
-        res.json({ success: true, message: 'Đặt hàng thành công!', order_id: orderId });
+        if (userEmail) {
+            sendEmail(userEmail, `Xac nhan don hang #${orderId} - DNC Trace`, emailContent).catch(console.error);
+        }
+
+        res.json({ success: true, message: 'Dat hang thanh cong!', order_id: orderId });
     } catch (error) {
+        try {
+            await connection.rollback();
+        } catch (rollbackError) {
+            console.error('Rollback failed:', rollbackError);
+        }
         res.status(500).json({ success: false, message: error.message });
+    } finally {
+        connection.release();
     }
 };
 
-// Khách hàng xác nhận đã nhận hàng
 exports.confirmReceivedByUser = async (req, res) => {
     try {
         const userId = req.user.id;
         const { id } = req.params;
 
-        // 1. Kiểm tra đơn hàng có tồn tại, thuộc về user này và đang ở trạng thái 'shipped' không
         const [orders] = await db.execute(
-            'SELECT status FROM orders WHERE id = ? AND user_id = ?', 
-            [id, userId]
+            'SELECT status FROM orders WHERE id = ? AND user_id = ?',
+            [id, userId],
         );
 
         if (orders.length === 0) {
-            return res.status(404).json({ success: false, message: "Không tìm thấy đơn hàng!" });
+            return res.status(404).json({ success: false, message: 'Khong tim thay don hang!' });
         }
 
         if (orders[0].status !== 'shipped') {
-            return res.status(400).json({ success: false, message: "Đơn hàng phải ở trạng thái 'Đang giao' mới có thể xác nhận!" });
+            return res.status(400).json({ success: false, message: "Don hang phai o trang thai 'Dang giao' moi co the xac nhan!" });
         }
 
-        // 2. Cập nhật thành 'delivered' (Đã nhận hàng)
         await db.execute('UPDATE orders SET status = "delivered" WHERE id = ?', [id]);
 
-        res.json({ success: true, message: 'Xác nhận đã nhận hàng thành công!' });
+        res.json({ success: true, message: 'Xac nhan da nhan hang thanh cong!' });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
 };
 
-//======================================
-// CÁC HÀM DÀNH CHO ADMIN XEM ĐƠN HÀNG
-//======================================
-
-// 1. Xem tất cả đơn hàng (dành cho admin)
 exports.getAllOrdersAdmin = async (req, res) => {
     try {
         const [orders] = await db.execute('SELECT * FROM orders ORDER BY created_at DESC');
@@ -119,13 +157,12 @@ exports.getAllOrdersAdmin = async (req, res) => {
     }
 };
 
-// 2. Xem chi tiết đơn hàng (dành cho admin)
 exports.getAllOrdersDetailAdmin = async (req, res) => {
     try {
-        const { id } = req.params; // Lấy ID đơn hàng từ URL
+        const { id } = req.params;
         const [details] = await db.execute(
             'SELECT od.*, p.name, p.image FROM order_details od JOIN products p ON od.product_id = p.id WHERE od.order_id = ?',
-            [id]
+            [id],
         );
         res.json({ success: true, data: details });
     } catch (error) {
@@ -133,36 +170,34 @@ exports.getAllOrdersDetailAdmin = async (req, res) => {
     }
 };
 
-// 3. Cập nhật trạng thái đơn hàng (dành cho admin)
 exports.updateOrderStatus = async (req, res) => {
     try {
-        const { id } = req.params; // Lấy ID đơn hàng từ URL
-        const {status } = req.body; // Lấy trạng thái mới từ body
+        const { id } = req.params;
+        const { status } = req.body;
+        const allowedStatuses = ['pending', 'processing', 'shipped', 'delivered', 'cancelled'];
+
+        if (!allowedStatuses.includes(status)) {
+            return res.status(400).json({ success: false, message: 'Trang thai don hang khong hop le!' });
+        }
+
         await db.execute('UPDATE orders SET status = ? WHERE id = ?', [status, id]);
-        
-        res.json({ success: true, message: 'Trạng thái đơn hàng đã được cập nhật!' });
+
+        res.json({ success: true, message: 'Trang thai don hang da duoc cap nhat!' });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
 };
 
-// ==========================================
-// THỐNG KÊ DASHBOARD CHO ADMIN
-// ==========================================
 exports.getDashboardStats = async (req, res) => {
     try {
-        // 1. Tổng doanh thu (Chỉ tính các đơn đã giao thành công - 'delivered')
         const [revenueResult] = await db.execute('SELECT SUM(total_price) as totalRevenue FROM orders WHERE status = "delivered"');
         const totalRevenue = revenueResult[0].totalRevenue || 0;
 
-        // 2. Tổng số lượng đơn hàng (Tất cả trạng thái)
         const [ordersResult] = await db.execute('SELECT COUNT(id) as totalOrders FROM orders');
         const totalOrders = ordersResult[0].totalOrders || 0;
 
-        // 3. Thống kê số lượng theo từng trạng thái (Để vẽ biểu đồ tròn)
         const [statusData] = await db.execute('SELECT status, COUNT(id) as count FROM orders GROUP BY status');
 
-        // 4. Doanh thu theo 6 tháng gần nhất (Chỉ tính đơn 'delivered')
         const [monthlyRevenue] = await db.execute(`
             SELECT DATE_FORMAT(created_at, '%m/%Y') as month, SUM(total_price) as revenue
             FROM orders
@@ -178,9 +213,8 @@ exports.getDashboardStats = async (req, res) => {
                 totalRevenue,
                 totalOrders,
                 statusData,
-                // Đảo ngược mảng để tháng cũ đứng trước, tháng mới đứng sau
-                monthlyRevenue: monthlyRevenue.reverse() 
-            }
+                monthlyRevenue: monthlyRevenue.reverse(),
+            },
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });

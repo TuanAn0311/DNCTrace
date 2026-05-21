@@ -682,6 +682,41 @@ tr:last-child td {
   font-size: 14px;
 }
 
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 18px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.pagination__controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.pagination__button {
+  min-width: 40px;
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fffaf2;
+  color: var(--text);
+  cursor: pointer;
+  font-weight: 750;
+}
+
+.pagination__button--active {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: #ffffff;
+}
+
 .product-card {
   overflow: hidden;
   display: flex;
@@ -1046,6 +1081,15 @@ tr:last-child td {
 
   .catalog-toolbar {
     grid-template-columns: 1fr;
+  }
+
+  .pagination {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .pagination__controls {
+    justify-content: flex-start;
   }
 
   .history-item {

@@ -1,11 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import Pagination from '../components/Pagination';
 import api from '../services/api';
+
+const ORDERS_PER_PAGE = 10;
 
 const AdminOrders = () => {
     const [orders, setOrders] = useState([]);
     const [selectedOrder, setSelectedOrder] = useState(null);
     const [orderDetails, setOrderDetails] = useState([]);
     const [showModal, setShowModal] = useState(false);
+    const [currentPage, setCurrentPage] = useState(1);
 
     // 1. Lấy danh sách toàn bộ đơn hàng
     const fetchOrders = async () => {
@@ -20,6 +24,16 @@ const AdminOrders = () => {
     useEffect(() => {
         fetchOrders();
     }, []);
+
+    useEffect(() => {
+        const totalPages = Math.max(1, Math.ceil(orders.length / ORDERS_PER_PAGE));
+        if (currentPage > totalPages) setCurrentPage(totalPages);
+    }, [currentPage, orders.length]);
+
+    const paginatedOrders = useMemo(() => {
+        const startIndex = (currentPage - 1) * ORDERS_PER_PAGE;
+        return orders.slice(startIndex, startIndex + ORDERS_PER_PAGE);
+    }, [currentPage, orders]);
 
     // 2. Đổi trạng thái đơn hàng
     const handleStatusChange = async (orderId, newStatus) => {
@@ -77,7 +91,7 @@ const AdminOrders = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        {orders.map(order => (
+                        {paginatedOrders.map(order => (
                             <tr key={order.id} style={{ borderBottom: '1px solid #eee' }}>
                                 <td style={{ padding: '15px', fontWeight: 'bold' }}>#{order.id}</td>
                                 <td style={{ padding: '15px' }}>
@@ -121,6 +135,12 @@ const AdminOrders = () => {
                     </tbody>
                 </table>
             </div>
+            <Pagination
+                currentPage={currentPage}
+                totalItems={orders.length}
+                pageSize={ORDERS_PER_PAGE}
+                onPageChange={setCurrentPage}
+            />
 
             {/* ======================================================== */}
             {/* MODAL CHI TIẾT ĐƠN HÀNG */}

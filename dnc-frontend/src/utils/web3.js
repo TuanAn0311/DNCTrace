@@ -4,7 +4,7 @@ import abi from "../contracts/DNCTraceABI.json";
 
 const CONTRACT_ADDRESS =
   import.meta.env.VITE_CONTRACT_ADDRESS ||
-  "0x3c9b9f6D6D50b8BA587A0F30D675923f4ba459C9";
+  "0xfeB1916022c26BD4dbbD59Ce7032371F81945318"; // Địa chỉ Smart Contract (có thể lấy từ .env)
 
 export const connectMetaMask = async () => {
   // 1. Kiểm tra xem trình duyệt có cài MetaMask chưa

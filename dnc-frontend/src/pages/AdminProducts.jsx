@@ -1,11 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import Pagination from '../components/Pagination';
 import api from '../services/api';
+
+const PRODUCTS_PER_PAGE = 10;
 
 const AdminProducts = () => {
     const [products, setProducts] = useState([]);
     const [showForm, setShowForm] = useState(false);
     const [editingId, setEditingId] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
+    const [currentPage, setCurrentPage] = useState(1);
 
     // BƯỚC 1: Đã xóa 'stock' ra khỏi formData khởi tạo
     const [formData, setFormData] = useState({
@@ -24,6 +28,16 @@ const AdminProducts = () => {
 
     useEffect(() => { fetchProducts(); }, []);
 
+    useEffect(() => {
+        const totalPages = Math.max(1, Math.ceil(products.length / PRODUCTS_PER_PAGE));
+        if (currentPage > totalPages) setCurrentPage(totalPages);
+    }, [currentPage, products.length]);
+
+    const paginatedProducts = useMemo(() => {
+        const startIndex = (currentPage - 1) * PRODUCTS_PER_PAGE;
+        return products.slice(startIndex, startIndex + PRODUCTS_PER_PAGE);
+    }, [currentPage, products]);
+
     const handleInputChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
     };
@@ -37,7 +51,7 @@ const AdminProducts = () => {
         setIsLoading(true);
         try {
             if (editingId) {
-                await api.put(`/products/${editingId}`, formData);
+                await api.put(`/products/update/${editingId}`, formData);
                 alert("Cập nhật thành công!");
             } else {
                 await api.post('/products', formData);
@@ -146,7 +160,7 @@ const AdminProducts = () => {
                         {products?.length === 0 ? (
                             <tr><td colSpan="7" style={{ textAlign: 'center', padding: '20px' }}>Chưa có dữ liệu sản phẩm</td></tr>
                         ) : (
-                            products.map(p => (
+                            paginatedProducts.map(p => (
                                 <tr key={p.id} style={{ borderBottom: '1px solid #eee' }}>
                                     <td style={{ padding: '10px' }}>#{p.id}</td>
                                     <td style={{ padding: '10px' }}>
@@ -171,6 +185,12 @@ const AdminProducts = () => {
                     </tbody>
                 </table>
             </div>
+            <Pagination
+                currentPage={currentPage}
+                totalItems={products.length}
+                pageSize={PRODUCTS_PER_PAGE}
+                onPageChange={setCurrentPage}
+            />
         </div>
     );
 };

@@ -2,25 +2,34 @@ const nodemailer = require("nodemailer");
 
 const sendEmail = async (toEmail, subject, htmlContent) => {
   try {
+    const emailUser = process.env.EMAIL_USER;
+    const emailPass = process.env.EMAIL_PASS;
+    const emailFrom =
+      process.env.EMAIL_FROM || `"DNC Trace" <${emailUser || "no-reply@dnctrace.local"}>`;
+
+    if (!emailUser || !emailPass) {
+      console.warn("Email config is missing. Skip sending email.");
+      return;
+    }
+
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
-        user: "dqta74@gmail.com", // Thay bằng Gmail của bạn
-        pass: "zmkq nkzp orfs vini", // Thay bằng App Password
+        user: emailUser,
+        pass: emailPass,
       },
     });
 
-    const mailOptions = {
-      from: '"DNC Trace - Hệ thống Cà phê Minh bạch" <dqta74@gmail.com>',
+    await transporter.sendMail({
+      from: emailFrom,
       to: toEmail,
-      subject: subject,
+      subject,
       html: htmlContent,
-    };
+    });
 
-    await transporter.sendMail(mailOptions);
-    console.log(`Đã gửi email thành công tới ${toEmail}`);
+    console.log(`Email sent successfully to ${toEmail}`);
   } catch (error) {
-    console.error("Lỗi khi gửi email:", error);
+    console.error("Failed to send email:", error);
   }
 };
 

@@ -1,45 +1,62 @@
 const db = require("../config/db");
 
-// [POST] /api/cart/add
 exports.addToCart = async (req, res) => {
   try {
+    const user_id = req.user.id;
     const { product_id, quantity } = req.body;
-    const user_id = req.user.id; // Lấy từ Token đã verify
+    const requestedQuantity = Number(quantity) || 1;
 
-    // 1. Kiểm tra sản phẩm đã có trong giỏ chưa
+    if (!product_id || requestedQuantity < 1) {
+      return res.status(400).json({ success: false, message: "Du lieu gio hang khong hop le!" });
+    }
+
+    const [products] = await db.execute(
+      "SELECT id, stock, status FROM products WHERE id = ?",
+      [product_id],
+    );
+
+    if (products.length === 0 || Number(products[0].status) !== 1) {
+      return res.status(404).json({ success: false, message: "San pham khong ton tai hoac chua mo ban!" });
+    }
+
     const [items] = await db.execute(
-      "SELECT * FROM cart WHERE user_id = ? AND product_id = ?", 
+      "SELECT quantity FROM cart WHERE user_id = ? AND product_id = ?",
       [user_id, product_id],
     );
 
+    const currentQuantity = Number(items[0]?.quantity || 0);
+    const nextQuantity = currentQuantity + requestedQuantity;
+
+    if (Number(products[0].stock) < nextQuantity) {
+      return res.status(400).json({ success: false, message: "So luong vuot qua ton kho hien co!" });
+    }
+
     if (items.length > 0) {
-      // 2. Nếu có rồi -> Update số lượng
       await db.execute(
-        "UPDATE cart SET quantity = quantity + ? WHERE user_id = ? AND product_id = ?",
-        [quantity || 1, user_id, product_id],
+        "UPDATE cart SET quantity = ? WHERE user_id = ? AND product_id = ?",
+        [nextQuantity, user_id, product_id],
       );
     } else {
-      // 3. Nếu chưa có -> Thêm mới
       await db.execute(
         "INSERT INTO cart (user_id, product_id, quantity) VALUES (?, ?, ?)",
-        [user_id, product_id, quantity || 1],
+        [user_id, product_id, requestedQuantity],
       );
     }
-    res.json({ success: true, message: "Đã thêm vào giỏ hàng!" });
+
+    res.json({ success: true, message: "Da them vao gio hang!" });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// [GET] /api/cart
 exports.getCart = async (req, res) => {
   try {
     const user_id = req.user.id;
     const [cartItems] = await db.execute(
-      `SELECT c.id as cart_id, c.product_id, c.quantity, p.name, p.price, p.image 
-            FROM cart c 
-            JOIN products p ON c.product_id = p.id 
-            WHERE c.user_id = ?`,
+      `SELECT c.id as cart_id, c.product_id, c.quantity, p.name, p.price, p.image, p.stock
+       FROM cart c
+       JOIN products p ON c.product_id = p.id
+       WHERE c.user_id = ?`,
       [user_id],
     );
     res.json({ success: true, data: cartItems });
@@ -48,93 +65,95 @@ exports.getCart = async (req, res) => {
   }
 };
 
-// [POST] /api/cart/checkout - Xử lý thanh toán và lưu đơn hàng
 exports.checkout = async (req, res) => {
-  // 1. Lấy một kết nối riêng từ Pool để chạy Transaction
   const connection = await db.getConnection();
 
   try {
-    // Bắt đầu chuỗi giao dịch an toàn
     await connection.beginTransaction();
 
     const user_id = req.user.id;
     const { fullName, phone, address, paymentMethod } = req.body;
 
-    // Kiểm tra đầu vào cơ bản
     if (!fullName || !phone || !address) {
       await connection.rollback();
       return res.status(400).json({
         success: false,
-        message: "Vui lòng nhập đầy đủ thông tin giao hàng!",
+        message: "Vui long nhap day du thong tin giao hang!",
       });
     }
 
-    // 2. Lấy thông tin giỏ hàng kèm theo giá sản phẩm hiện tại
     const [cartItems] = await connection.execute(
-      `SELECT c.product_id, c.quantity, p.price 
-             FROM cart c 
-             JOIN products p ON c.product_id = p.id 
-             WHERE c.user_id = ?`,
+      `SELECT c.product_id, c.quantity, p.price, p.stock, p.name
+       FROM cart c
+       JOIN products p ON c.product_id = p.id
+       WHERE c.user_id = ?`,
       [user_id],
     );
 
     if (cartItems.length === 0) {
       await connection.rollback();
-      return res
-        .status(400)
-        .json({ success: false, message: "Giỏ hàng đang trống!" });
+      return res.status(400).json({ success: false, message: "Gio hang dang trong!" });
     }
 
-    // 3. Tính toán tổng tiền của đơn hàng
+    const outOfStockItem = cartItems.find((item) => Number(item.stock) < Number(item.quantity));
+    if (outOfStockItem) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: `San pham "${outOfStockItem.name}" khong du ton kho!`,
+      });
+    }
+
     const totalPrice = cartItems.reduce(
-      (sum, item) => sum + item.price * item.quantity,
+      (sum, item) => sum + Number(item.price) * Number(item.quantity),
       0,
     );
 
-    // 4. Tạo bản ghi vào bảng `orders` (Đơn hàng tổng)
     const [orderResult] = await connection.execute(
-      `INSERT INTO orders (user_id, full_name, phone, address, total_price, payment_method) 
-             VALUES (?, ?, ?, ?, ?, ?)`,
-      [user_id, fullName, phone, address, totalPrice, paymentMethod],
+      `INSERT INTO orders (user_id, full_name, phone, address, total_price, payment_method)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [user_id, fullName, phone, address, totalPrice, paymentMethod || "COD"],
     );
 
     const newOrderId = orderResult.insertId;
 
-    // 5. Lưu từng sản phẩm vào bảng `order_details` (Chi tiết đơn hàng)
-    // Việc lưu lại "price" ở đây giúp giá đơn hàng không bị đổi nếu sau này bạn tăng/giảm giá sản phẩm gốc
     for (const item of cartItems) {
       await connection.execute(
-        `INSERT INTO order_details (order_id, product_id, quantity, price) 
-                 VALUES (?, ?, ?, ?)`,
+        `INSERT INTO order_details (order_id, product_id, quantity, price)
+         VALUES (?, ?, ?, ?)`,
         [newOrderId, item.product_id, item.quantity, item.price],
       );
+
+      const [stockResult] = await connection.execute(
+        "UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?",
+        [item.quantity, item.product_id, item.quantity],
+      );
+
+      if (stockResult.affectedRows === 0) {
+        throw new Error(`San pham "${item.name}" khong du ton kho!`);
+      }
     }
 
-    // 6. Xóa các sản phẩm đã thanh toán khỏi giỏ hàng
     await connection.execute("DELETE FROM cart WHERE user_id = ?", [user_id]);
-
-    // 7. Hoàn tất chuỗi giao dịch và lưu vĩnh viễn vào Database
     await connection.commit();
 
     res.status(201).json({
       success: true,
-      message: "Đặt hàng thành công!",
+      message: "Dat hang thanh cong!",
       orderId: newOrderId,
     });
   } catch (error) {
-    // Nếu có bất kỳ lỗi gì xảy ra, hủy bỏ toàn bộ các lệnh INSERT/DELETE vừa chạy
-    await connection.rollback();
-    console.error("Lỗi Checkout:", error);
-    res
-      .status(500)
-      .json({ success: false, message: "Lỗi server khi xử lý đơn hàng." });
+    try {
+      await connection.rollback();
+    } catch (rollbackError) {
+      console.error("Rollback failed:", rollbackError);
+    }
+    res.status(500).json({ success: false, message: error.message });
   } finally {
-    // Luôn luôn trả kết nối lại cho hệ thống (Pool) dù thành công hay thất bại
     connection.release();
   }
 };
 
-// [GET] /api/cart/orders - Lấy danh sách đơn hàng của User
 exports.getUserOrders = async (req, res) => {
   try {
     const user_id = req.user.id;
@@ -148,29 +167,25 @@ exports.getUserOrders = async (req, res) => {
   }
 };
 
-// [GET] /api/cart/orders/:orderId - Lấy chi tiết 1 đơn hàng
 exports.getOrderDetails = async (req, res) => {
   try {
     const user_id = req.user.id;
     const { orderId } = req.params;
 
-    // Kiểm tra xem đơn hàng này có đúng là của User này không
     const [orders] = await db.execute(
       "SELECT id FROM orders WHERE id = ? AND user_id = ?",
       [orderId, user_id],
     );
+
     if (orders.length === 0) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Không tìm thấy đơn hàng" });
+      return res.status(404).json({ success: false, message: "Khong tim thay don hang" });
     }
 
-    // Lấy danh sách sản phẩm trong đơn hàng
     const [details] = await db.execute(
-      `SELECT od.quantity, od.price, od.product_id, p.name, p.image 
-                 FROM order_details od 
-                 JOIN products p ON od.product_id = p.id 
-                 WHERE od.order_id = ?`,
+      `SELECT od.quantity, od.price, od.product_id, p.name, p.image
+       FROM order_details od
+       JOIN products p ON od.product_id = p.id
+       WHERE od.order_id = ?`,
       [orderId],
     );
 
@@ -180,26 +195,39 @@ exports.getOrderDetails = async (req, res) => {
   }
 };
 
-// [PUT] /api/cart/update - Cập nhật số lượng
 exports.updateQuantity = async (req, res) => {
   try {
     const user_id = req.user.id;
     const { product_id, quantity } = req.body;
+    const nextQuantity = Number(quantity);
 
-    if (quantity < 1)
-      return res.status(400).json({ message: "Số lượng không hợp lệ" });
+    if (!product_id || !Number.isInteger(nextQuantity) || nextQuantity < 1) {
+      return res.status(400).json({ success: false, message: "So luong khong hop le!" });
+    }
+
+    const [products] = await db.execute(
+      "SELECT stock, status FROM products WHERE id = ?",
+      [product_id],
+    );
+
+    if (products.length === 0 || Number(products[0].status) !== 1) {
+      return res.status(404).json({ success: false, message: "San pham khong ton tai hoac chua mo ban!" });
+    }
+
+    if (Number(products[0].stock) < nextQuantity) {
+      return res.status(400).json({ success: false, message: "So luong vuot qua ton kho hien co!" });
+    }
 
     await db.execute(
       "UPDATE cart SET quantity = ? WHERE user_id = ? AND product_id = ?",
-      [quantity, user_id, product_id],
+      [nextQuantity, user_id, product_id],
     );
-    res.json({ success: true, message: "Đã cập nhật số lượng" });
+    res.json({ success: true, message: "Da cap nhat so luong" });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// [DELETE] /api/cart/remove/:productId - Xóa 1 sản phẩm khỏi giỏ
 exports.removeItem = async (req, res) => {
   try {
     const user_id = req.user.id;
@@ -209,7 +237,7 @@ exports.removeItem = async (req, res) => {
       user_id,
       productId,
     ]);
-    res.json({ success: true, message: "Đã xóa sản phẩm" });
+    res.json({ success: true, message: "Da xoa san pham" });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

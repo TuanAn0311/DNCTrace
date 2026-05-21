@@ -1,7 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import Pagination from '../components/Pagination';
 import api from '../services/api';
 import { connectMetaMask } from '../utils/web3';
+
+const REVIEWS_PER_PAGE = 5;
 
 const ProductDetail = () => {
     const { id } = useParams();
@@ -11,6 +14,7 @@ const ProductDetail = () => {
     const [blockchainHistory, setBlockchainHistory] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [reviews, setReviews] = useState([]);
+    const [reviewsPage, setReviewsPage] = useState(1);
 
     useEffect(() => {
         const fetchBlockchainData = async () => {
@@ -61,6 +65,16 @@ const ProductDetail = () => {
         fetchReviews();
         fetchBlockchainData();
     }, [id, navigate]);
+
+    useEffect(() => {
+        const totalPages = Math.max(1, Math.ceil(reviews.length / REVIEWS_PER_PAGE));
+        if (reviewsPage > totalPages) setReviewsPage(totalPages);
+    }, [reviews.length, reviewsPage]);
+
+    const paginatedReviews = useMemo(() => {
+        const startIndex = (reviewsPage - 1) * REVIEWS_PER_PAGE;
+        return reviews.slice(startIndex, startIndex + REVIEWS_PER_PAGE);
+    }, [reviews, reviewsPage]);
 
     const addToCart = async () => {
         if (!localStorage.getItem('token')) {
@@ -169,7 +183,7 @@ const ProductDetail = () => {
                     <p style={{ color: '#888', fontStyle: 'italic' }}>Sản phẩm này chưa có đánh giá nào. Hãy là người đầu tiên trải nghiệm!</p>
                 ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginTop: '20px' }}>
-                        {reviews.map((rev, index) => (
+                        {paginatedReviews.map((rev, index) => (
                             <div key={index} style={{ padding: '20px', background: '#f9f9f9', borderRadius: '10px', border: '1px solid #eee' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                                     <div>
@@ -187,6 +201,12 @@ const ProductDetail = () => {
                                 </p>
                             </div>
                         ))}
+                        <Pagination
+                            currentPage={reviewsPage}
+                            totalItems={reviews.length}
+                            pageSize={REVIEWS_PER_PAGE}
+                            onPageChange={setReviewsPage}
+                        />
                     </div>
                 )}
             </div>
