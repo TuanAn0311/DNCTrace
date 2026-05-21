@@ -105,11 +105,16 @@ exports.placeOrder = async (req, res) => {
             </div>
         `;
 
-        if (userEmail) {
-            sendEmail(userEmail, `Xac nhan don hang #${orderId} - DNC Trace`, emailContent).catch(console.error);
-        }
+        const emailSent = userEmail
+            ? await sendEmail(userEmail, `Xac nhan don hang #${orderId} - DNC Trace`, emailContent)
+            : false;
 
-        res.json({ success: true, message: 'Dat hang thanh cong!', order_id: orderId });
+        res.json({
+            success: true,
+            message: 'Dat hang thanh cong!',
+            order_id: orderId,
+            email_sent: emailSent,
+        });
     } catch (error) {
         try {
             await connection.rollback();

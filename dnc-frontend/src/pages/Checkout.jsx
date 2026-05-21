@@ -95,12 +95,17 @@ const Checkout = () => {
     // Hàm gọi API đặt hàng thực sự (Dùng chung cho cả COD và khi xác nhận QR xong)
     const submitOrder = async (method) => {
         try {
-            await api.post('/orders/checkout', {
+            const response = await api.post('/orders/checkout', {
                 address_id: selectedAddress.id,
                 payment_method: method
             });
             
-            showToast("Đặt hàng thành công. Vui lòng kiểm tra email của bạn.", "success");
+            showToast(
+                response.data.email_sent
+                    ? "Đặt hàng thành công. Vui lòng kiểm tra email của bạn."
+                    : "Đặt hàng thành công.",
+                "success"
+            );
             window.dispatchEvent(new Event("cartUpdate")); 
             navigate('/orders'); 
         } catch (error) {

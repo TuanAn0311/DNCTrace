@@ -1,4 +1,4 @@
-// this middleware sẽ kiểm tra token JWT trong header của request để xác thực người dùng
+//middleware sẽ kiểm tra token trong header của request, giải mã nó và gắn thông tin user vào req.user để các controller sau có thể sử dụng. Nếu token không hợp lệ hoặc hết hạn, middleware sẽ trả về lỗi 401 hoặc 403.
 const jwt = require("jsonwebtoken");
 
 const verifyToken = (req, res, next) => {
