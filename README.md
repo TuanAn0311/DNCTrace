@@ -27,26 +27,29 @@ Trong hệ thống này, khách hàng có thể xem sản phẩm, kiểm tra hà
 
 ### Mô hình tổng thể
 
-Dự án được tổ chức theo mô hình **monorepo**, trong đó backend nằm ở thư mục gốc và frontend nằm trong thư mục `dnc-frontend`.
+Dự án được tổ chức theo mô hình **monorepo gọn**, trong đó backend nằm trong `src`, còn frontend React/Vite được đưa ra cấp root qua thư mục `client` để project giống cấu trúc `Start` hơn và không cần thư mục `frontend` riêng.
 
 ```text
 blockchain-ecommerce/
-+-- config/                  # Cấu hình kết nối MySQL
-+-- controllers/             # Business logic cho API backend
-+-- middlewares/             # Middleware xác thực JWT và phân quyền admin
-+-- routes/                  # Định nghĩa REST API routes
-+-- utils/                   # Tiện ích gửi email
-+-- server.js                # Entry point Express server
-+-- package.json             # Dependencies backend
-+-- dnc-frontend/
-    +-- src/
-    |   +-- components/      # Header, Footer, ToastProvider, Pagination
-    |   +-- contracts/       # ABI Smart Contract
-    |   +-- pages/           # Các màn hình user/admin
-    |   +-- services/        # Axios API client
-    |   +-- utils/           # Web3/MetaMask helper
-    +-- vite.config.js
-    +-- package.json         # Dependencies frontend
++-- src/
+|   +-- config/              # Cấu hình backend
+|   |   +-- db/              # Kết nối MySQL
+|   +-- controllers/         # Business logic cho API backend
+|   +-- middlewares/         # Middleware xác thực JWT và phân quyền admin
+|   +-- routes/              # Định nghĩa REST API routes
+|   +-- util/                # Tiện ích gửi email
+|   +-- index.js             # Entry point Express server
++-- client/
+|   +-- components/          # Header, Footer, ToastProvider, Pagination
+|   +-- contracts/           # ABI Smart Contract
+|   +-- pages/               # Các màn hình user/admin
+|   +-- services/            # Axios API client
+|   +-- utils/               # Web3/MetaMask helper
++-- public/                  # Static assets cho Vite
++-- index.html               # Entry HTML cho React
++-- vite.config.mjs          # Cấu hình Vite
++-- eslint.config.mjs        # Cấu hình ESLint
++-- package.json             # Dependencies/scripts backend + frontend
 ```
 
 ### Luồng kiến trúc Client-Server-Blockchain
@@ -187,7 +190,7 @@ Dự án hiện có file dump database `dnc_trace.sql`, bao gồm cấu trúc b�
 
 ### Smart Contract
 
-Workspace hiện tại không chứa file Solidity `.sol`, nhưng frontend có ABI tại `dnc-frontend/src/contracts/DNCTraceABI.json`. Từ ABI có thể xác định Smart Contract hỗ trợ:
+Workspace hiện tại không chứa file Solidity `.sol`, nhưng frontend có ABI tại `client/contracts/DNCTraceABI.json`. Từ ABI có thể xác định Smart Contract hỗ trợ:
 
 | Hàm/Event | Kiểu | Vai trò |
 | --- | --- | --- |
@@ -277,7 +280,7 @@ CONTRACT_ADDRESS=
 
 ### Cấu hình Frontend
 
-Tạo file `.env` trong thư mục `dnc-frontend` nếu cần override cấu hình mặc định.
+Tạo hoặc cập nhật file `.env` ở thư mục root nếu cần override cấu hình mặc định.
 
 ```env
 VITE_API_URL=http://localhost:5000/api
@@ -289,7 +292,7 @@ VITE_CONTRACT_ADDRESS=0xYourContractAddress
 | `VITE_API_URL` | Base URL của backend API. |
 | `VITE_CONTRACT_ADDRESS` | Địa chỉ Smart Contract để ethers.js kết nối. |
 
-Nếu không khai báo `VITE_CONTRACT_ADDRESS`, frontend đang dùng địa chỉ mặc định trong `src/utils/web3.js`.
+Nếu không khai báo `VITE_CONTRACT_ADDRESS`, frontend đang dùng địa chỉ mặc định trong `client/utils/web3.js`.
 
 ### Thiết lập Blockchain Local với Ganache, Remix IDE và MetaMask
 
@@ -313,13 +316,13 @@ Quy trình thiết lập đề xuất:
    - `Injected Provider - MetaMask` nếu deploy thông qua MetaMask.
    - Hoặc kết nối tới Ganache nếu Remix hỗ trợ provider tương ứng.
 7. Deploy contract và copy địa chỉ contract sau khi deploy.
-8. Cập nhật file `dnc-frontend/.env`:
+8. Cập nhật file `.env`:
 
 ```env
 VITE_CONTRACT_ADDRESS=0xYourDeployedContractAddress
 ```
 
-9. Đảm bảo ABI trong `dnc-frontend/src/contracts/DNCTraceABI.json` khớp với contract vừa deploy.
+9. Đảm bảo ABI trong `client/contracts/DNCTraceABI.json` khớp với contract vừa deploy.
 10. Khởi động lại frontend để Vite đọc lại biến môi trường.
 
 ### Cài đặt Backend
@@ -350,9 +353,8 @@ GET http://localhost:5000/api/health
 ### Cài đặt Frontend
 
 ```bash
-cd dnc-frontend
 npm install
-npm run dev
+npm run dev:web
 ```
 
 Frontend mặc định chạy tại:
@@ -364,14 +366,12 @@ http://localhost:5173
 ### Build Frontend
 
 ```bash
-cd dnc-frontend
 npm run build
 ```
 
 ### Kiểm tra chất lượng code Frontend
 
 ```bash
-cd dnc-frontend
 npm run lint
 ```
 
@@ -379,16 +379,15 @@ npm run lint
 
 1. Tạo database MySQL tên `dnc_trace`.
 2. Import file `dnc_trace.sql` vào MySQL/phpMyAdmin để tạo bảng, khóa, chỉ mục và dữ liệu mẫu.
-3. Cấu hình `.env` backend.
-4. Cài dependencies backend bằng `npm install`.
+3. Cấu hình `.env`.
+4. Cài dependencies bằng `npm install`.
 5. Chạy backend bằng `npm run dev`.
-6. Cấu hình `.env` frontend nếu cần.
-7. Cài dependencies frontend bằng `cd dnc-frontend && npm install`.
-8. Chạy frontend bằng `npm run dev`.
-9. Mở Ganache để chạy local blockchain.
-10. Dùng Remix IDE biên dịch/deploy Smart Contract lên Ganache.
-11. Cài MetaMask, import tài khoản test từ Ganache và chọn đúng network local.
-12. Đảm bảo `VITE_CONTRACT_ADDRESS` trỏ đến đúng địa chỉ contract vừa deploy.
+6. Cấu hình biến `VITE_*` trong `.env` nếu cần.
+7. Chạy frontend bằng `npm run dev:web`.
+8. Mở Ganache để chạy local blockchain.
+9. Dùng Remix IDE biên dịch/deploy Smart Contract lên Ganache.
+10. Cài MetaMask, import tài khoản test từ Ganache và chọn đúng network local.
+11. Đảm bảo `VITE_CONTRACT_ADDRESS` trỏ đến đúng địa chỉ contract vừa deploy.
 
 ## 6. Những cải tiến và tính năng mới nhất
 
