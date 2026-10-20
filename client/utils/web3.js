@@ -2,7 +2,7 @@
 import { ethers } from "ethers";
 import abi from "../contracts/DNCTraceABI.json";
 
-const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || "0x43a70e9be471aF950f5fb477E037c5cAD3B0772F"; // Địa chỉ Smart Contract (có thể lấy từ .env)
+const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || "0x21ad4623cff4c3Af0a8A65E4550499D323a1914e"; // Địa chỉ Smart Contract (có thể lấy từ .env)
 
 export const connectMetaMask = async () => {
     // 1. Kiểm tra xem trình duyệt có cài MetaMask chưa

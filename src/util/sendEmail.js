@@ -3,8 +3,8 @@ const nodemailer = require("nodemailer");
 const sendEmail = async (to, subject, htmlContent) => {
     try {
         const transporter = nodemailer.createTransport({
-            host: "smtp.gmail.com", // Bắt buộc phải trỏ đến máy chủ của Google
-            port: 587, // Cổng bảo mật TLS
+            host: "smtp.gmail.com",
+            port: 587,
             secure: false,
             auth: {
                 user: process.env.EMAIL_USER,
@@ -19,8 +19,9 @@ const sendEmail = async (to, subject, htmlContent) => {
             html: htmlContent,
         });
 
-        return true;
+        return info;
     } catch (error) {
+        console.error("Lỗi gửi email:", error);
         throw error;
     }
 };

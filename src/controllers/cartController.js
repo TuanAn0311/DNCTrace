@@ -1,15 +1,9 @@
-const db = require("../config/db");
+const cartService = require("../services/cartService");
 
 exports.getCart = async (req, res) => {
     try {
         const userId = req.user.id;
-        const [items] = await db.execute(
-            `SELECT c.id, c.product_id, c.quantity, p.name, p.price, p.image, p.stock
-       FROM cart c
-       JOIN products p ON c.product_id = p.id
-       WHERE c.user_id = ?`,
-            [userId],
-        );
+        const items = await cartService.getCartByUserId(userId);
         res.json({ success: true, data: items });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -25,16 +19,13 @@ exports.addToCart = async (req, res) => {
             return res.status(400).json({ success: false, message: "Thông tin giỏ hàng không hợp lệ!" });
         }
 
-        const [existing] = await db.execute("SELECT id, quantity FROM cart WHERE user_id = ? AND product_id = ?", [userId, product_id]);
+        const cartItem = await cartService.addToCart(userId, { product_id, quantity });
 
-        if (existing.length > 0) {
-            const newQty = Number(existing[0].quantity) + Number(quantity);
-            await db.execute("UPDATE cart SET quantity = ? WHERE id = ?", [newQty, existing[0].id]);
-        } else {
-            await db.execute("INSERT INTO cart (user_id, product_id, quantity) VALUES (?, ?, ?)", [userId, product_id, quantity]);
-        }
-
-        res.json({ success: true, message: "Đã thêm vào giỏ hàng!" });
+        res.json({
+            success: true,
+            message: "Đã thêm vào giỏ hàng!",
+            data: cartItem,
+        });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -49,12 +40,16 @@ exports.updateCartItem = async (req, res) => {
             return res.status(400).json({ success: false, message: "Số lượng không hợp lệ!" });
         }
 
-        const [result] = await db.execute("UPDATE cart SET quantity = ? WHERE id = ?", [quantity, id]);
-        if (result.affectedRows === 0) {
+        const updatedItem = await cartService.updateCartItem(id, quantity);
+        if (!updatedItem) {
             return res.status(404).json({ success: false, message: "Không tìm thấy mục giỏ hàng!" });
         }
 
-        res.json({ success: true, message: "Cập nhật giỏ hàng thành công!" });
+        res.json({
+            success: true,
+            message: "Cập nhật giỏ hàng thành công!",
+            data: updatedItem,
+        });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -69,12 +64,16 @@ exports.updateCartItemByProduct = async (req, res) => {
             return res.status(400).json({ success: false, message: "Số lượng không hợp lệ!" });
         }
 
-        const [result] = await db.execute("UPDATE cart SET quantity = ? WHERE user_id = ? AND product_id = ?", [quantity, userId, product_id]);
-        if (result.affectedRows === 0) {
+        const updatedItem = await cartService.updateCartItemByProduct(userId, product_id, quantity);
+        if (!updatedItem) {
             return res.status(404).json({ success: false, message: "Không tìm thấy mục giỏ hàng!" });
         }
 
-        res.json({ success: true, message: "Cập nhật giỏ hàng thành công!" });
+        res.json({
+            success: true,
+            message: "Cập nhật giỏ hàng thành công!",
+            data: updatedItem,
+        });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -83,13 +82,17 @@ exports.updateCartItemByProduct = async (req, res) => {
 exports.removeCartItem = async (req, res) => {
     try {
         const { id } = req.params;
-        const [result] = await db.execute("DELETE FROM cart WHERE id = ?", [id]);
+        const deletedItem = await cartService.removeCartItem(id);
 
-        if (result.affectedRows === 0) {
+        if (!deletedItem) {
             return res.status(404).json({ success: false, message: "Không tìm thấy mục giỏ hàng!" });
         }
 
-        res.json({ success: true, message: "Xóa sản phẩm khỏi giỏ hàng thành công!" });
+        res.json({
+            success: true,
+            message: "Xóa sản phẩm khỏi giỏ hàng thành công!",
+            data: deletedItem,
+        });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -99,13 +102,17 @@ exports.removeCartItemByProduct = async (req, res) => {
     try {
         const userId = req.user.id;
         const { productId } = req.params;
-        const [result] = await db.execute("DELETE FROM cart WHERE user_id = ? AND product_id = ?", [userId, productId]);
+        const deletedItem = await cartService.removeCartItemByProduct(userId, productId);
 
-        if (result.affectedRows === 0) {
+        if (!deletedItem) {
             return res.status(404).json({ success: false, message: "Không tìm thấy mục giỏ hàng!" });
         }
 
-        res.json({ success: true, message: "Xóa sản phẩm khỏi giỏ hàng thành công!" });
+        res.json({
+            success: true,
+            message: "Xóa sản phẩm khỏi giỏ hàng thành công!",
+            data: deletedItem,
+        });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
