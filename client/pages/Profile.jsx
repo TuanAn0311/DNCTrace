@@ -131,8 +131,12 @@ const Profile = () => {
     const handleSetDefault = async (id) => {
         try {
             const res = await api.put(`/addresses/${id}/default`);
-            const nextAddresses = Array.isArray(res.data.data) ? res.data.data : [];
-            setAddresses(nextAddresses);
+            if (Array.isArray(res.data?.data)) {
+                setAddresses(res.data.data);
+            } else {
+                const refreshed = await api.get("/addresses");
+                setAddresses(refreshed.data.data || []);
+            }
             setAddressesPage(1);
             showToast("Đã đặt địa chỉ mặc định.", "success");
         } catch (error) {
@@ -145,8 +149,12 @@ const Profile = () => {
 
         try {
             const res = await api.delete(`/addresses/${id}`);
-            const nextAddresses = Array.isArray(res.data.data) ? res.data.data : [];
-            setAddresses(nextAddresses);
+            if (Array.isArray(res.data?.data)) {
+                setAddresses(res.data.data);
+            } else {
+                const refreshed = await api.get("/addresses");
+                setAddresses(refreshed.data.data || []);
+            }
             setAddressesPage(1);
             if (editingAddressId === id) resetAddressForm();
             showToast("Đã xóa địa chỉ.", "success");

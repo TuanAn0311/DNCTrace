@@ -27,12 +27,16 @@ exports.addToCart = async (req, res) => {
             data: cartItem,
         });
     } catch (error) {
+        if (error.statusCode) {
+            return res.status(error.statusCode).json({ success: false, message: error.message });
+        }
         res.status(500).json({ success: false, message: error.message });
     }
 };
 
 exports.updateCartItem = async (req, res) => {
     try {
+        const userId = req.user.id;
         const { id } = req.params;
         const { quantity } = req.body;
 
@@ -40,7 +44,7 @@ exports.updateCartItem = async (req, res) => {
             return res.status(400).json({ success: false, message: "Số lượng không hợp lệ!" });
         }
 
-        const updatedItem = await cartService.updateCartItem(id, quantity);
+        const updatedItem = await cartService.updateCartItem(userId, id, quantity);
         if (!updatedItem) {
             return res.status(404).json({ success: false, message: "Không tìm thấy mục giỏ hàng!" });
         }
@@ -51,6 +55,9 @@ exports.updateCartItem = async (req, res) => {
             data: updatedItem,
         });
     } catch (error) {
+        if (error.statusCode) {
+            return res.status(error.statusCode).json({ success: false, message: error.message });
+        }
         res.status(500).json({ success: false, message: error.message });
     }
 };
@@ -75,14 +82,18 @@ exports.updateCartItemByProduct = async (req, res) => {
             data: updatedItem,
         });
     } catch (error) {
+        if (error.statusCode) {
+            return res.status(error.statusCode).json({ success: false, message: error.message });
+        }
         res.status(500).json({ success: false, message: error.message });
     }
 };
 
 exports.removeCartItem = async (req, res) => {
     try {
+        const userId = req.user.id;
         const { id } = req.params;
-        const deletedItem = await cartService.removeCartItem(id);
+        const deletedItem = await cartService.removeCartItem(userId, id);
 
         if (!deletedItem) {
             return res.status(404).json({ success: false, message: "Không tìm thấy mục giỏ hàng!" });

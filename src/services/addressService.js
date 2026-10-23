@@ -40,6 +40,19 @@ exports.updateAddress = async (userId, id, { full_name, phone, address_line, dis
     return rows[0] || null;
 };
 
+exports.setDefaultAddress = async (userId, id) => {
+    const [existing] = await db.execute("SELECT * FROM user_addresses WHERE id = ? AND user_id = ?", [id, userId]);
+    if (existing.length === 0) {
+        return null;
+    }
+
+    await db.execute("UPDATE user_addresses SET is_default = 0 WHERE user_id = ?", [userId]);
+    await db.execute("UPDATE user_addresses SET is_default = 1 WHERE id = ? AND user_id = ?", [id, userId]);
+
+    const [rows] = await db.execute("SELECT * FROM user_addresses WHERE id = ? AND user_id = ?", [id, userId]);
+    return rows[0] || null;
+};
+
 exports.deleteAddress = async (userId, id) => {
     const [rows] = await db.execute("SELECT * FROM user_addresses WHERE id = ? AND user_id = ?", [id, userId]);
     if (rows.length === 0) {
@@ -49,4 +62,3 @@ exports.deleteAddress = async (userId, id) => {
     await db.execute("DELETE FROM user_addresses WHERE id = ? AND user_id = ?", [id, userId]);
     return rows[0];
 };
-

@@ -188,13 +188,72 @@ exports.getAllOrdersDetailAdmin = async (orderId) => {
 };
 
 exports.updateOrderStatus = async (orderId, status) => {
-    const [result] = await db.execute("UPDATE orders SET status = ? WHERE id = ?", [status, orderId]);
-    if (result.affectedRows === 0) {
-        return null;
-    }
+    const connection = await db.getConnection();
 
-    const [orders] = await db.execute("SELECT * FROM orders WHERE id = ?", [orderId]);
-    return orders[0] || null;
+    try {
+        await connection.beginTransaction();
+
+        const [existingOrders] = await connection.execute("SELECT * FROM orders WHERE id = ?", [orderId]);
+        if (existingOrders.length === 0) {
+            await connection.rollback();
+            return null;
+        }
+
+        const currentOrder = existingOrders[0];
+
+        if (currentOrder.status === "delivered" && status === "cancelled") {
+            await connection.rollback();
+            const error = new Error("Không thể hủy đơn hàng đã giao thành công!");
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Hoàn lại tồn kho nếu đơn hàng chuyển từ trạng thái khác sang "cancelled"
+        if (currentOrder.status !== "cancelled" && status === "cancelled") {
+            const [details] = await connection.execute(
+                "SELECT product_id, quantity FROM order_details WHERE order_id = ?",
+                [orderId]
+            );
+            for (const item of details) {
+                await connection.execute(
+                    "UPDATE products SET stock = stock + ? WHERE id = ?",
+                    [item.quantity, item.product_id]
+                );
+            }
+        } else if (currentOrder.status === "cancelled" && status !== "cancelled") {
+            // Trừ lại tồn kho nếu khôi phục đơn hàng đã hủy
+            const [details] = await connection.execute(
+                "SELECT od.product_id, od.quantity, p.name FROM order_details od JOIN products p ON od.product_id = p.id WHERE od.order_id = ?",
+                [orderId]
+            );
+            for (const item of details) {
+                const [stockResult] = await connection.execute(
+                    "UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?",
+                    [item.quantity, item.product_id, item.quantity]
+                );
+                if (stockResult.affectedRows === 0) {
+                    const error = new Error(`Sản phẩm "${item.name}" không đủ tồn kho để khôi phục đơn hàng!`);
+                    error.statusCode = 400;
+                    throw error;
+                }
+            }
+        }
+
+        await connection.execute("UPDATE orders SET status = ? WHERE id = ?", [status, orderId]);
+
+        const [orders] = await connection.execute("SELECT * FROM orders WHERE id = ?", [orderId]);
+        await connection.commit();
+        return orders[0] || null;
+    } catch (error) {
+        try {
+            await connection.rollback();
+        } catch (rollbackError) {
+            console.error("Rollback failed:", rollbackError);
+        }
+        throw error;
+    } finally {
+        connection.release();
+    }
 };
 
 exports.getDashboardStats = async () => {
@@ -222,4 +281,3 @@ exports.getDashboardStats = async () => {
         monthlyRevenue: monthlyRevenue.reverse(),
     };
 };
-

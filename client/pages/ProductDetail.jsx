@@ -34,18 +34,7 @@ const ProductDetail = () => {
 
                 setProduct(productData);
 
-                //////////////// 2. Lấy lịch sử từ Smart Contract
-                const { contract } = await connectMetaMask();
-                const historyData = await contract.getHistory(id);
-
-                const formattedContractHistory = historyData.map((item) => ({
-                    stageName: item.stageName,
-                    note: item.note,
-                    updatedBy: item.updatedBy,
-                    timestamp: Number(item.timestamp) * 1000,
-                    txHash: "",
-                }));
-
+                //////////////// 2. Lấy bằng chứng & lịch sử từ Backend (Smart Contract / DB fallback)
                 try {
                     const recordResponse = await api.get(`/supply-chain/records/${id}`);
                     setBlockchainRecord(recordResponse.data.data || null);
@@ -54,9 +43,10 @@ const ProductDetail = () => {
                     setBlockchainRecord(null);
                 }
 
+                let loadedHistory = [];
                 try {
                     const historyResponse = await api.get(`/supply-chain/history/${id}`);
-                    const backendHistory = (historyResponse.data.data || []).map((item) => {
+                    loadedHistory = (historyResponse.data.data || []).map((item) => {
                         let parsedData;
                         try {
                             parsedData = typeof item.data === "string" ? JSON.parse(item.data) : item.data || {};
@@ -72,12 +62,28 @@ const ProductDetail = () => {
                             txHash: parsedData.tx_hash || parsedData.txHash || "",
                         };
                     });
-
-                    setBlockchainHistory(backendHistory.length > 0 ? backendHistory : formattedContractHistory);
                 } catch (historyError) {
                     console.error("Lỗi lấy lịch sử từ backend:", historyError);
-                    setBlockchainHistory(formattedContractHistory);
                 }
+
+                // Nếu backend chưa trả về lịch sử và trình duyệt có sẵn MetaMask thì thử đọc từ contract
+                if (loadedHistory.length === 0 && window.ethereum) {
+                    try {
+                        const { contract } = await connectMetaMask();
+                        const historyData = await contract.getHistory(id);
+                        loadedHistory = historyData.map((item) => ({
+                            stageName: item.stageName,
+                            note: item.note,
+                            updatedBy: item.updatedBy,
+                            timestamp: Number(item.timestamp) * 1000,
+                            txHash: "",
+                        }));
+                    } catch (contractError) {
+                        console.error("Không thể đọc trực tiếp từ MetaMask:", contractError);
+                    }
+                }
+
+                setBlockchainHistory(loadedHistory);
             } catch (error) {
                 console.error("Lỗi truy xuất Blockchain:", error);
             } finally {
@@ -272,7 +278,7 @@ const ProductDetail = () => {
                             <div key={index} style={{ padding: "20px", background: "#f9f9f9", borderRadius: "10px", border: "1px solid #eee" }}>
                                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
                                     <div>
-                                        <strong style={{ fontSize: "16px", color: "#333" }}>{rev.full_name}</strong>
+                                        <strong style={{ fontSize: "16px", color: "#333" }}>{rev.full_name || "Khách hàng"}</strong>
                                         <div style={{ color: "#ffc107", fontSize: "18px", marginTop: "3px" }}>
                                             {"★".repeat(rev.rating)}
                                             {"☆".repeat(5 - rev.rating)}

@@ -88,7 +88,7 @@ const Cart = () => {
             }
         } catch (error) {
             console.error("Lỗi cập nhật:", error);
-            alert("Không thể cập nhật số lượng vào Database!");
+            alert(error.response?.data?.message || "Không thể cập nhật số lượng vào Database!");
         }
     };
 

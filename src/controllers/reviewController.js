@@ -24,11 +24,20 @@ exports.createReview = async (req, res) => {
         const userId = req.user.id;
         const { product_id, rating, comment } = req.body;
 
-        if (!product_id || !rating || !comment) {
+        if (!product_id || !rating || !comment || !String(comment).trim()) {
             return res.status(400).json({ success: false, message: "Vui lòng nhập đầy đủ thông tin đánh giá!" });
         }
 
-        const newReview = await reviewService.createReview(userId, { product_id, rating, comment });
+        const numericRating = Number(rating);
+        if (!Number.isInteger(numericRating) || numericRating < 1 || numericRating > 5) {
+            return res.status(400).json({ success: false, message: "Số sao đánh giá phải từ 1 đến 5!" });
+        }
+
+        const newReview = await reviewService.createReview(userId, {
+            product_id,
+            rating: numericRating,
+            comment: String(comment).trim(),
+        });
         res.json({
             success: true,
             message: "Đánh giá đã được gửi!",
@@ -45,7 +54,12 @@ exports.updateReview = async (req, res) => {
         const userId = req.user.id;
         const { rating, comment } = req.body;
 
-        const updatedReview = await reviewService.updateReview(id, userId, { rating, comment });
+        const numericRating = Number(rating);
+        if (!Number.isInteger(numericRating) || numericRating < 1 || numericRating > 5) {
+            return res.status(400).json({ success: false, message: "Số sao đánh giá phải từ 1 đến 5!" });
+        }
+
+        const updatedReview = await reviewService.updateReview(id, userId, { rating: numericRating, comment });
         if (!updatedReview) {
             return res.status(404).json({ success: false, message: "Không tìm thấy đánh giá!" });
         }

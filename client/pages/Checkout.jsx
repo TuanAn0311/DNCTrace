@@ -97,20 +97,23 @@ const Checkout = () => {
         try {
             const res = await api.post("/addresses", payload);
 
-            // Prefer addresses returned directly by the create API (backend returns data: addresses and id)
-            const returnedList = res.data?.data;
-            let addrList = Array.isArray(returnedList) ? returnedList : null;
+            const returnedData = res.data?.data;
+            let addrList = Array.isArray(returnedData) ? returnedData : null;
 
-            // If backend did not return the updated list, try fetching; ignore fetch errors so modal still closes
             if (!Array.isArray(addrList)) {
                 try {
                     addrList = await fetchAddresses();
                 } catch {
-                    addrList = [];
+                    addrList = returnedData ? [returnedData] : [];
                 }
             }
 
-            const createdAddress = addrList.find((item) => item.id === Number(res.data?.id)) || addrList[0] || null;
+            const targetId = Number(res.data?.id ?? returnedData?.id);
+            const createdAddress =
+                addrList.find((item) => Number(item.id) === targetId) ||
+                (!Array.isArray(returnedData) && returnedData) ||
+                addrList[0] ||
+                null;
             if (createdAddress) setSelectedAddress(createdAddress);
             showToast("Đã thêm địa chỉ mới.", "success");
             // Always close/reset modal after successful POST
@@ -125,12 +128,9 @@ const Checkout = () => {
     const handlePlaceOrder = async () => {
         if (!selectedAddress) return showToast("Vui lòng thêm địa chỉ giao hàng.", "warning");
         if (cartItems.length === 0) {
-            return (
-                <div style={{ textAlign: "center", padding: "50px 20px", color: "#d9534f" }}>
-                    <h2>Giỏ hàng trống</h2>
-                    <button onclick={() => navigate("/products")}>Quay lại cửa hàng </button>
-                </div>
-            );
+            showToast("Giỏ hàng của bạn đang trống.", "warning");
+            navigate("/products");
+            return;
         }
 
         if (paymentMethod === "QR") {

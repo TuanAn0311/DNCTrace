@@ -124,6 +124,9 @@ exports.updateOrderStatus = async (req, res) => {
             data: updatedOrder,
         });
     } catch (error) {
+        if (error.statusCode) {
+            return res.status(error.statusCode).json({ success: false, message: error.message });
+        }
         res.status(500).json({ success: false, message: error.message });
     }
 };

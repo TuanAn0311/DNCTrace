@@ -45,6 +45,10 @@ exports.updateAddress = async (req, res) => {
         const { id } = req.params;
         const { full_name, phone, address_line, district, city, is_default = 0 } = req.body;
 
+        if (!full_name || !phone || !address_line || !district || !city) {
+            return res.status(400).json({ success: false, message: "Vui lòng điền đầy đủ thông tin địa chỉ!" });
+        }
+
         const updatedAddress = await addressService.updateAddress(userId, id, {
             full_name,
             phone,
@@ -61,6 +65,26 @@ exports.updateAddress = async (req, res) => {
         res.json({
             success: true,
             message: "Cập nhật địa chỉ thành công!",
+            data: updatedAddress,
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+exports.setDefaultAddress = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { id } = req.params;
+
+        const updatedAddress = await addressService.setDefaultAddress(userId, id);
+        if (!updatedAddress) {
+            return res.status(404).json({ success: false, message: "Không tìm thấy địa chỉ!" });
+        }
+
+        res.json({
+            success: true,
+            message: "Đã đặt làm địa chỉ mặc định!",
             data: updatedAddress,
         });
     } catch (error) {
